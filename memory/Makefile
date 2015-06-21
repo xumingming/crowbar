@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS = -c -g -DDEBUG -Wall -ansi -pedantic -Wlong-long -Wcomment
+CFLAGS = -c -g -DDEBUG -Wall -ansi -pedantic -std=c99
 OBJS = memory.o storage.o
 TARGETS = test testp
 

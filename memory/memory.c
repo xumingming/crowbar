@@ -21,6 +21,7 @@ default_error_handler(MEM_Controller controller,
   fprintf(controller->error_fp,
 		  "MEM:%s failed in %s at %d\n", msg, filename, line);
 }
+
 MEM_Controller
 MEM_create_controller(void)
 {
@@ -94,7 +95,7 @@ error_handler(MEM_Controller controller, char *filename, int line, char*msg)
   }
 }
 
-/* 为什么上面这些方法是 static 的？ */
+/* 为什么上面这些方法是 static 的？  保证只有这个文件里面可以调用 */
 
 /**
  * 这里的 header size 为什么不是 MARK_SIZE, 而要这么算出来？
@@ -115,8 +116,7 @@ set_header(Header *header, int size, char *filename, int line) {
   header->s.filename = filename;
   header->s.line = line;
 
-  int actual_header_mark_size = cal_actual_header_mark_size(header);
-  memset(header->s.mark, MARK, actual_header_mark_size);
+  memset(header->s.mark, MARK, cal_actual_header_mark_size(header));
 }
 
 /**
@@ -142,6 +142,10 @@ check_mark_sub(unsigned char *mark, int size)
   }
 }
 
+/**
+ * 检查一块内存头尾的 mark 是否还完好无损，如果「有损」
+ * 那么说明出现了内存越界访问
+ */
 void
 check_mark(Header *header)
 {
@@ -152,7 +156,8 @@ check_mark(Header *header)
 }
 
 /**
- * 分配内存
+ * 分配一块指定大小的内存，并且注册到 Controller 里面去。
+ * 这里的注册机制是我们后面实现 GC 的前提
  */
 void*
 MEM_malloc_func(MEM_Controller controller, char *filename, int line, size_t size)
@@ -160,7 +165,8 @@ MEM_malloc_func(MEM_Controller controller, char *filename, int line, size_t size
   void *ptr;
   size_t alloc_size;
 
-  alloc_size = size + sizeof(Header) + MARK_SIZE;
+  /* header + realsize + tail */
+  alloc_size = sizeof(Header) + size +  MARK_SIZE;
   ptr = malloc(alloc_size);
   if (ptr == NULL) {
 	error_handler(controller, filename, line, "malloc");
@@ -175,6 +181,66 @@ MEM_malloc_func(MEM_Controller controller, char *filename, int line, size_t size
   return ptr;
 }
 
+/**
+ * 对已经分配的一段内存的大小进行扩充
+ */
+void*
+MEM_realloc_func(MEM_Controller controller, char *filename, int line,
+				 void *ptr, size_t size)
+{
+  void *new_ptr;
+  size_t alloc_size;
+  void *real_ptr;
+
+  Header old_header;
+  int old_size;
+
+  alloc_size = sizeof(Header) + size + MARK_SIZE;
+  if (ptr != NULL) {
+	real_ptr = (char*)ptr - sizeof(Header);
+	check_mark((Header*)real_ptr);
+	old_header = *((Header*)real_ptr);
+	old_size = old_header.s.size;
+	unchain_block(controller, real_ptr);
+  } else {
+	real_ptr = NULL;
+	old_size = 0;
+  }
+
+  new_ptr = realloc(real_ptr, alloc_size);
+  if (new_ptr == NULL) {
+	if (ptr == NULL) {
+	  error_handler(controller, filename, line, "realloc(malloc)");
+	} else {
+	  error_handler(controller, filename, line, "realloc");
+	  free(real_ptr);
+	}
+  }
+
+  Header *new_header;
+  new_header = (Header*)new_ptr;
+  if (ptr) {
+	*new_header = old_header;
+	new_header->s.size = size;
+	rechain_block(controller, new_header);
+	set_tail(new_ptr, alloc_size);
+  } else {
+	set_header(new_ptr, size, filename, line);
+	set_tail(new_ptr, alloc_size);
+	chain_block(controller, new_header);
+  }
+
+  new_ptr = (char*)new_ptr + sizeof(Header);
+  if (size > old_size) {
+	memset((char*)new_ptr + old_size, 0xCC, size - old_size);
+  }
+
+  return new_ptr;
+}
+
+/**
+ * 释放一块内存
+ */
 void
 MEM_free_func(MEM_Controller controller, void* ptr)
 {

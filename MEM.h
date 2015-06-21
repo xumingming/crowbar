@@ -30,6 +30,11 @@ typedef void (*MEM_ErrorHandler)(MEM_Controller, char *, int, char *);
 void *MEM_malloc_func(MEM_Controller controller,
                       char *filename, int line, size_t size);
 /**
+ * 对已经分配的一段内存已经扩充
+ */
+void *MEM_realloc_func(MEM_Controller controller,
+					   char *filename, int line, void *ptr, size_t size);
+/**
  * 把当前所有的内存详情都 dump 出来的函数
  */
 void MEM_dump_blocks_func(MEM_Controller controller, FILE *fp);
@@ -56,6 +61,9 @@ void MEM_dispose_storage_func(MEM_Controller controller, MEM_Storage storage);
 #define MEM_malloc(size)\
   (MEM_malloc_func(MEM_CURRENT_CONTROLLER,\
                    __FILE__, __LINE__, size))
+#define MEM_realloc(size)\
+  (MEM_realloc_func(MEM_CURRENT_CONTROLLER, __FILE__, __LINE__, ptr, size))
+
 #define MEM_dump_blocks(fp)\
   (MEM_dump_blocks_func(MEM_CURRENT_CONTROLLER, fp))
 

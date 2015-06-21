@@ -29,8 +29,6 @@ static void
 test_memory()
 {
   unsigned char *p1;
-  unsigned char *p2;
-  unsigned char *p3;
   p1 = MEM_malloc(10);
   dump_buffer(p1, 10);  
   fill_buffer(p1, 10);
